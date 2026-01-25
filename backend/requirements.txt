@@ -3,6 +3,7 @@ uvicorn[standard]
 
 python-multipart
 pydantic-settings
+email-validator
 
 sqlalchemy
 psycopg2-binary

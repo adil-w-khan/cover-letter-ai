@@ -4,15 +4,11 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from fastapi.responses import JSONResponse
-
 from app.core.config import settings
-from app.db.session import engine
-from app.db.base import Base
 from app.routes.auth import router as auth_router
 from app.routes.coverletters import router as coverletters_router
 
-# Create tables (MVP). Later you can migrate to Alembic properly.
-Base.metadata.create_all(bind=engine)
+
 
 limiter = Limiter(key_func=get_remote_address)
 

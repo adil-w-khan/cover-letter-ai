@@ -30,7 +30,8 @@ pip-delete-this-directory.txt
 *.sqlite3
 
 # Alembic
-versions/
+alembic/versions/
+alembic/__pycache__/
 
 # OS
 .DS_Store
