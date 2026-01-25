@@ -10,6 +10,7 @@ from app.core.security import (
 )
 from app.schemas.auth import RegisterRequest, LoginRequest, UserOut
 from app.core.config import settings
+from app.main import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -46,6 +47,7 @@ def get_current_user(db: Session, authorization: str | None) -> User:
     return user
 
 @router.post("/register", response_model=UserOut)
+@limiter.limit("5/minute")   # strict: avoid spam registrations
 def register(data: RegisterRequest, resp: Response, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == data.email.lower()).first()
     if existing:
@@ -69,6 +71,7 @@ def register(data: RegisterRequest, resp: Response, db: Session = Depends(get_db
     return user
 
 @router.post("/login", response_model=UserOut)
+@limiter.limit("10/minute")  # strict: brute force protection
 def login(data: LoginRequest, resp: Response, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == data.email.lower()).first()
     if not user or not verify_password(data.password, user.password_hash):
@@ -81,6 +84,7 @@ def login(data: LoginRequest, resp: Response, db: Session = Depends(get_db)):
     return user
 
 @router.post("/refresh")
+@limiter.limit("30/minute")  # moderate
 def refresh(req: Request, resp: Response):
     token = req.cookies.get(REFRESH_COOKIE_NAME)
     if not token:
@@ -99,19 +103,23 @@ def refresh(req: Request, resp: Response):
     return {"ok": True}
 
 @router.post("/logout")
+@limiter.limit("30/minute")
 def logout(resp: Response):
     clear_refresh_cookie(resp)
     return {"ok": True}
 
 @router.get("/me", response_model=UserOut)
+@limiter.limit("60/minute")
 def me(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(db, request.headers.get("Authorization"))
     return user
 
 @router.delete("/account")
+@limiter.limit("5/minute")  # deleting accounts should be limited
 def delete_account(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(db, request.headers.get("Authorization"))
     # hard delete user (cascade deletes cover letters)
     db.delete(user)
     db.commit()
     return {"ok": True}
+
