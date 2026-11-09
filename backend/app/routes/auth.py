@@ -10,7 +10,7 @@ from app.core.security import (
 )
 from app.schemas.auth import RegisterRequest, LoginRequest, UserOut
 from app.core.config import settings
-from app.main import limiter
+from app.core.limiter import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -46,9 +46,15 @@ def get_current_user(db: Session, authorization: str | None) -> User:
         raise HTTPException(status_code=401, detail="User not found")
     return user
 
+
 @router.post("/register", response_model=UserOut)
-@limiter.limit("5/minute")   # strict: avoid spam registrations
-def register(data: RegisterRequest, resp: Response, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def register(
+    request: Request,
+    data: RegisterRequest,
+    resp: Response,
+    db: Session = Depends(get_db)
+):
     existing = db.query(User).filter(User.email == data.email.lower()).first()
     if existing:
         raise HTTPException(status_code=409, detail="Email already in use")
@@ -70,9 +76,15 @@ def register(data: RegisterRequest, resp: Response, db: Session = Depends(get_db
     resp.headers["X-Access-Token"] = access
     return user
 
+
 @router.post("/login", response_model=UserOut)
-@limiter.limit("10/minute")  # strict: brute force protection
-def login(data: LoginRequest, resp: Response, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(
+    request: Request,
+    data: LoginRequest,
+    resp: Response,
+    db: Session = Depends(get_db)
+):
     user = db.query(User).filter(User.email == data.email.lower()).first()
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -83,10 +95,11 @@ def login(data: LoginRequest, resp: Response, db: Session = Depends(get_db)):
     resp.headers["X-Access-Token"] = access
     return user
 
+
 @router.post("/refresh")
-@limiter.limit("30/minute")  # moderate
-def refresh(req: Request, resp: Response):
-    token = req.cookies.get(REFRESH_COOKIE_NAME)
+@limiter.limit("30/minute")
+def refresh(request: Request, resp: Response):
+    token = request.cookies.get(REFRESH_COOKIE_NAME)
     if not token:
         raise HTTPException(status_code=401, detail="Missing refresh token")
 
@@ -104,7 +117,7 @@ def refresh(req: Request, resp: Response):
 
 @router.post("/logout")
 @limiter.limit("30/minute")
-def logout(resp: Response):
+def logout(request: Request, resp: Response):
     clear_refresh_cookie(resp)
     return {"ok": True}
 

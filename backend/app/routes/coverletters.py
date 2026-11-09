@@ -10,7 +10,10 @@ from app.schemas.coverletter import (
 from app.services.resume_extract import extract_text_from_pdf, extract_text_from_docx
 from app.services.openai_client import generate_cover_letter
 from app.services.pdf_export import render_pdf_bytes
-from app.main import limiter
+from app.core.limiter import limiter
+import json
+from fastapi import Form
+from pydantic import ValidationError
 
 router = APIRouter(prefix="/coverletters", tags=["coverletters"])
 
@@ -46,13 +49,19 @@ def get_coverletter(cover_id: int, request: Request, db: Session = Depends(get_d
     return require_owner(db, user.id, cover_id)
 
 @router.post("/generate", response_model=CoverLetterOut)
-@limiter.limit("3/minute")   # VERY important: cost control + abuse prevention
+@limiter.limit("3/minute")
 async def generate(
     request: Request,
-    data: GenerateCoverLetterRequest,
+    data: str = Form(...),              # JSON string
     resume: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
+    try:
+        parsed = json.loads(data)
+        data_obj = GenerateCoverLetterRequest(**parsed)
+    except (json.JSONDecodeError, ValidationError):
+        raise HTTPException(status_code=400, detail="Invalid form data")
+
     user = get_current_user(db, request.headers.get("Authorization"))
 
     if resume.content_type not in ALLOWED_TYPES:
@@ -72,25 +81,25 @@ async def generate(
         raise HTTPException(status_code=400, detail="Could not extract usable text from resume")
 
     payload = {
-        "input_full_name": data.input_full_name,
-        "job_title": data.job_title,
-        "company_name": data.company_name,
-        "tone": data.tone,
-        "job_description": data.job_description,
+        "input_full_name": data_obj.input_full_name,
+        "job_title": data_obj.job_title,
+        "company_name": data_obj.company_name,
+        "tone": data_obj.tone,
+        "job_description": data_obj.job_description,
         "resume_text": resume_text,
-        "extra_notes": data.extra_notes,
+        "extra_notes": data_obj.extra_notes,
     }
 
     ai_draft = generate_cover_letter(payload)
 
     cl = CoverLetter(
         user_id=user.id,
-        input_full_name=data.input_full_name,
-        job_title=data.job_title,
-        company_name=data.company_name,
-        tone=data.tone,
-        job_description=data.job_description,
-        extra_notes=data.extra_notes,
+        input_full_name=data_obj.input_full_name,
+        job_title=data_obj.job_title,
+        company_name=data_obj.company_name,
+        tone=data_obj.tone,
+        job_description=data_obj.job_description,
+        extra_notes=data_obj.extra_notes,
         resume_text=resume_text,
         ai_draft=ai_draft,
         edited_final=None,
